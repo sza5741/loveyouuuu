@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>I love you &lt;3</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Arial', sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="heartCanvas"></canvas>
+
+    <!-- Elemen Audio untuk memutar sound Anda secara otomatis -->
+    <audio id="bgMusic" src="love_you.mp3" loop></audio>
+
+    <script>
+        const canvas = document.getElementById('heartCanvas');
+        const ctx = canvas.getContext('2d');
+        const audio = document.getElementById('bgMusic');
+
+        // Mengatur resolusi layar penuh
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Putar musik saat user pertama kali mengklik layar (aturan browser modern)
+        window.addEventListener('click', () => {
+            audio.play().catch(e => console.log("Audio play blocked", e));
+        }, { once: true });
+
+        const WORDS = ["love you", "Love You", "LOVE YOU"];
+        const COLORS = [
+            'rgb(70, 130, 180)',
+            'rgb(30, 144, 255)',  
+            'rgb(0, 191, 255)',  
+            'rgb(100, 149, 237)', 
+            'rgb(65, 105, 225)'
+        ];
+
+        class Particle {
+            constructor(x, y, order, kind) {
+                this.x = x;
+                this.y = y;
+                this.baseX = x;
+                this.baseY = y;
+                this.order = order;
+                this.kind = kind;
+                this.word = WORDS[Math.floor(Math.random() * WORDS.length)];
+                this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
+                this.alpha = 0;
+                this.flicker = Math.random() * Math.PI * 2;
+                this.sizeMult = 0.85 + Math.random() * 0.3;
+                this.delay = 0;
+            }
+        }
+
+        function heartXY(t) {
+            const x = 16 * Math.pow(Math.sin(t), 3);
+            const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+            return { x: x, y: -y };
+        }
+
+        // Pengaturan Skala agar muat di layar HP maupun Laptop
+        const scale = Math.min(canvas.width, canvas.height) / 50; 
+        const particles = [];
+
+        // 1. Build Outline Particles
+        const nOutline = 140;
+        const placedOutline = [];
+        for (let i = 0; i < nOutline; i++) {
+            const t = (i / nOutline) * 2 * Math.PI;
+            const pos = heartXY(t);
+            const sx = pos.x * scale + canvas.width / 2;
+            const sy = pos.y * scale + canvas.height / 2;
+            
+            let gapOk = true;
+            for (let p of placedOutline) {
+                if (Math.hypot(sx - p.x, sy - p.y) < 18) { gapOk = false; break; }
+            }
+            if (!gapOk) continue;
+            
+            placedOutline.push({x: sx, y: sy});
+            const p = new Particle(sx, sy, i, "outline");
+            p.delay = i * 1.2;
+            particles.push(p);
+        }
+
+        // 2. Build Fill Particles
+        const nFill = 100;
+        const placedFill = [];
+        let attempts = 0;
+        const maxAttempts = nFill * 80;
+        const outlineSpan = particles.length > 0 ? Math.max(...particles.map(p => p.order)) : 0;
+        const fillStartFrame = Math.floor(outlineSpan * 1.2) + 20;
+
+        while (placedFill.length < nFill && attempts < maxAttempts) {
+            attempts++;
+            const t = Math.random() * 2 * Math.PI;
+            const r = Math.random() * 0.82;
+            const pos = heartXY(t);
+            const px = pos.x * r;
+            const py = pos.y * r;
+            const sx = px * scale + canvas.width / 2;
+            const sy = py * scale + canvas.height / 2;
+
+            let gapOk = true;
+            for (let p of [...placedOutline, ...placedFill]) {
+                if (Math.hypot(sx - p.x, sy - p.y) < 25) { gapOk = false; break; }
+            }
+            if (!gapOk) continue;
+
+            placedFill.push({x: sx, y: sy});
+            const p = new Particle(sx, sy, Math.floor(Math.random() * 200), "fill");
+            p.delay = fillStartFrame + p.order;
+            particles.push(p);
+        }
+
+        let frame = 0;
+
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; // Efek trail samar
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            frame++;
+
+            // Efek detak jantung mengikuti beat cepat musik Anda
+            const pulseScale = 1.0 + 0.04 * Math.sin(frame * 0.15);
+
+            particles.forEach(p => {
+                if (frame > p.delay) {
+                    if (p.alpha < 1) p.alpha = Math.min(1, p.alpha + 0.08);
+
+                    p.flicker += 0.12;
+                    const flickerAlpha = p.alpha * (0.6 + 0.4 * Math.sin(p.flicker));
+
+                    // Kalkulasi posisi berdasarkan pulse beat
+                    const dx = p.baseX - canvas.width / 2;
+                    const dy = p.baseY - canvas.height / 2;
+                    const currentX = (canvas.width / 2) + dx * pulseScale;
+                    const currentY = (canvas.height / 2) + dy * pulseScale;
+
+                    ctx.save();
+                    ctx.globalAlpha = flickerAlpha;
+                    
+                    // Efek Glow / Neon Teks
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = p.color;
+                    
+                    ctx.fillStyle = p.color;
+                    const fontSize = (p.kind === "outline" ? 14 : 12) * p.sizeMult;
+                    ctx.font = `bold ${fontSize}px Arial`;
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText(p.word, currentX, currentY);
+                    ctx.restore();
+                }
+            });
+
+            // Memunculkan teks pusat "Love You"
+            if (frame > fillStartFrame) {
+                const centerAlpha = Math.min(1, (frame - fillStartFrame) * 0.03);
+                const centerPulse = 1.0 + 0.03 * Math.sin(frame * 0.15);
+
+                ctx.save();
+                ctx.globalAlpha = centerAlpha;
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = 'rgb(173, 216, 230)';
+                ctx.fillStyle = 'rgb(173, 216, 230)';
+                ctx.font = `bold ${Math.floor(36 * centerPulse)}px Georgia`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(" Love You ", canvas.width / 2, canvas.height / 2);
+                ctx.restore();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
